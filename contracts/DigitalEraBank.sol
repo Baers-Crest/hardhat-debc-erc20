@@ -41,8 +41,8 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     // Execution status of signer transactions
     mapping(bytes32 => bool) private executedTransactions;
 
-    // Number of required signers to execute the signer transactions (default: 1)
-    uint public requiredSignatures = 1;
+    // Number of required signers to execute the signer transactions
+    uint public requiredSignatures = 0;
 
     // Address of the ETH price feed contract
     address public constant ethPriceFeedContract =
