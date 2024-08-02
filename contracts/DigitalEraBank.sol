@@ -12,48 +12,62 @@
  */
 
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "./MultiSigWallet.sol";
 
-contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
+contract DigitalEraBank is ERC20, MultiSigWallet, ReentrancyGuard {
     // Events
     event Sold(uint256 amount, address indexed by);
 
     // Address of the ETH price feed contract
-    address public ethPriceFeedContract =
+    address public constant ethPriceFeedContract =
         0x694AA1769357215DE4FAC081bf1f309aDC325306; // 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
 
     // Address of the EUR price feed contract
-    address public eurPriceFeedContract =
+    address public constant eurPriceFeedContract =
         0x1a81afB8146aeFfCFc5E50e8479e826E7D55b910; // 0xb49f677943BC038e9857d61E7d053CaA2C1734C1;
 
+    // Address of the USDT price feed contract
+    address public constant usdtPriceFeedContract =
+        0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // 0x3E7d1eAB13ad0104d2750B8863b489D65364e32D
+
+    // Address of the USDC price feed contract
+    address public constant usdcPriceFeedContract =
+        0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6
+
+    // Heartbeat interval price feed is updated (default: 5 minutes)
+    uint256 public heartbeat = 5 minutes;
+
     // Address of the USDT contract
-    address public usdtContract = 0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0; // 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+    address public constant usdtContract =
+        0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0; // 0xdAC17F958D2ee523a2206206994597C13D831ec7;
 
     // Address of the USDC contract
-    address public usdcContract = 0xf08A50178dfcDe18524640EA6618a1f965821715; // 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public constant usdcContract =
+        0xf08A50178dfcDe18524640EA6618a1f965821715; // 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     // Start time of the presale
     uint256 public presaleStartTime = 0;
 
     // Duration of each presale stage in seconds (default: 1 week)
-    uint256 public presaleStageDuration = 604800;
+    uint256 public constant presaleStageDuration = 1 weeks;
 
     // Number of presale stages (default: 12 stages)
-    uint256 public presaleStageCount = 12;
+    uint256 public constant presaleStageCount = 12;
 
     // Initial price of tokens during the presale in cents (EUR) (default: 0.35 EUR)
-    uint256 public initialPresalePrice = 35;
+    uint256 public constant initialPresalePrice = 35;
 
     // Increment of token price per stage during the presale in cents (EUR) (default: 0.05 EUR)
-    uint256 public presalePriceIncrementPerStage = 5;
+    uint256 public constant presalePriceIncrementPerStage = 5;
 
     // Token price at launch in cents (EUR) (default: 1 EUR)
-    uint256 public launchPrice = 100; // 1 EUR
+    uint256 public constant launchPrice = 100; // 1 EUR
 
     // Total number of tokens sold during the presale
     uint256 public totalTokensSoldOnPresale = 0;
@@ -61,34 +75,33 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
     // Price variation percentage threshold (default: 1%)
     uint256 public priceVariationPercentageThreshold = 1;
 
+    // Modifier to check if the address is not zero
+    modifier notZero(address _address) {
+        require(_address != address(0), "Address 0");
+        _;
+    }
+
+    // Modifier to check if the address is not zero
+    modifier withinRange(
+        uint256 value,
+        uint256 min,
+        uint256 max
+    ) {
+        require(value >= min && value <= max, "Out of range");
+        _;
+    }
+
     // Modifier to check if the presale is active
     modifier presaleActive() {
+        uint256 startTime = presaleStartTime;
         require(
-            presaleStartTime != 0 && presaleStartTime <= block.timestamp,
-            "Presale timestamp: Presale not started"
+            startTime != 0 && startTime <= block.timestamp,
+            "Presale not started"
         );
         require(
             block.timestamp <
-                presaleStartTime + presaleStageDuration * presaleStageCount,
-            "Presale timestamp: Presale ended"
-        );
-        _;
-    }
-
-    // Modifier to check if the presale has started
-    modifier presaleStarted() {
-        require(
-            presaleStartTime != 0 && presaleStartTime <= block.timestamp,
-            "Presale timestamp: Presale not started"
-        );
-        _;
-    }
-
-    // Modifier to check if the presale has not started
-    modifier presaleNotStarted() {
-        require(
-            presaleStartTime == 0 || presaleStartTime > block.timestamp,
-            "Presale timestamp: Presale started"
+                startTime + presaleStageDuration * presaleStageCount,
+            "Presale ended"
         );
         _;
     }
@@ -97,7 +110,8 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      * @dev Constructor that mints the initial supply of tokens to the contract itself.
      */
     constructor() ERC20("Digital Era Bank", "DEBC") Ownable() {
-        _mint(address(this), 2e15);
+        uint256 initialSupply = 5000000000000000;
+        _mint(address(this), initialSupply);
     }
 
     /**
@@ -109,42 +123,21 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Mints new tokens
-     * @param to The address to mint the tokens to
+     * @dev Increase total supply
      * @param amount The amount of tokens to mint
      */
-    function mint(address to, uint256 amount) public onlyOwner {
-        _mint(to, amount);
+    function mint(uint256 amount) public onlyOwner {
+        require(amount > 0, "Invalid amount");
+        _mint(address(this), amount);
     }
 
     /**
-     * @dev Mints new tokens to multiple recipients
-     * @param recipients The addresses to mint the tokens to
-     * @param amounts The amounts of tokens to mint to each address
-     */
-    function bulkMint(
-        address[] calldata recipients,
-        uint256[] calldata amounts
-    ) external onlyOwner {
-        require(recipients.length > 0, "Bulk mint: No recipients");
-        require(
-            recipients.length == amounts.length,
-            "Bulk mint: Mismatched arrays"
-        );
-        for (uint256 i = 0; i < recipients.length; i++) {
-            unchecked {
-                _mint(recipients[i], amounts[i]);
-            }
-        }
-    }
-
-    /**
-     * @dev Burns tokens from an address
-     * @param from The address to burn the tokens from
+     * @dev Decrease total supply
      * @param amount The amount of tokens to burn
      */
-    function burn(address from, uint256 amount) public onlyOwner {
-        _burn(from, amount);
+    function burn(uint256 amount) public onlyOwner {
+        require(amount > 0, "Invalid amount");
+        _burn(address(this), amount);
     }
 
     /**
@@ -159,29 +152,25 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
         uint256 amount
     ) internal override {
         super._beforeTokenTransfer(from, to, amount);
-        bool isPresaledEnded = presaleStartTime != 0 &&
+        uint256 startTime = presaleStartTime;
+        bool isPresaledEnded = startTime != 0 &&
             block.timestamp >=
-            presaleStartTime + presaleStageDuration * presaleStageCount;
+            startTime + presaleStageDuration * presaleStageCount;
         require(
             from == address(0) || from == address(this) || isPresaledEnded,
-            "Token transfer: Transfers are currently not allowed"
+            "Transfers not allowed"
         );
     }
 
     /**
-     * @dev Sets the ETH price feed contract address
-     * @param newAddress The new ETH price feed contract address
+     * @dev Sets the heartbeat interval
+     * @param newInterval The new heartbeat interval
      */
-    function setETHPriceFeedContract(address newAddress) public onlyOwner {
-        ethPriceFeedContract = newAddress;
-    }
-
-    /**
-     * @dev Sets the EUR price feed contract address
-     * @param newAddress The new EUR price feed contract address
-     */
-    function setEURPriceFeedContract(address newAddress) public onlyOwner {
-        eurPriceFeedContract = newAddress;
+    function setHeartbeat(
+        uint256 newInterval
+    ) public onlyOwner withinRange(newInterval, 1 minutes, 2 hours) {
+        require(heartbeat != newInterval);
+        heartbeat = newInterval;
     }
 
     /**
@@ -191,21 +180,27 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      */
     function _getLatestPrice(
         address priceFeedContract
-    ) private view returns (int256) {
+    ) private view returns (uint256) {
         AggregatorV3Interface aggregator = AggregatorV3Interface(
             priceFeedContract
         );
 
-        (, int256 price, , , ) = aggregator.latestRoundData();
+        (, int256 price, , uint256 updatedAt, ) = aggregator.latestRoundData();
+        require(block.timestamp - updatedAt <= heartbeat, "Stale data");
 
-        return price;
+        uint8 tokenDecimals = aggregator.decimals();
+        if (tokenDecimals <= 8) {
+            return uint256(price) * (10 ** (8 - tokenDecimals));
+        } else {
+            return uint256(price) / (10 ** (tokenDecimals - 8));
+        }
     }
 
     /**
      * @dev Returns the latest ETH price from the price feed
      * @return int256 The latest ETH price
      */
-    function latestETHPrice() public view returns (int256) {
+    function latestETHPrice() public view returns (uint256) {
         return _getLatestPrice(ethPriceFeedContract);
     }
 
@@ -213,50 +208,24 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      * @dev Returns the latest EUR price from the price feed
      * @return int256 The latest EUR price
      */
-    function latestEURPrice() public view returns (int256) {
+    function latestEURPrice() public view returns (uint256) {
         return _getLatestPrice(eurPriceFeedContract);
     }
 
     /**
-     * @dev Sets the number of presale stages
-     * @param count The new number of presale stages
+     * @dev Returns the latest USDT price from the price feed
+     * @return int256 The latest USDT price
      */
-    function setPresaleStageCount(uint256 count) public onlyOwner {
-        presaleStageCount = count;
+    function latestUSDTPrice() public view returns (uint256) {
+        return _getLatestPrice(usdtPriceFeedContract);
     }
 
     /**
-     * @dev Sets the duration of each presale stage
-     * @param duration The new duration of each presale stage
+     * @dev Returns the latest USDC price from the price feed
+     * @return int256 The latest USDC price
      */
-    function setPresaleStageDuration(uint256 duration) public onlyOwner {
-        presaleStageDuration = duration;
-    }
-
-    /**
-     * @dev Sets the initial price of the presale
-     * @param price The new initial presale price
-     */
-    function setInitialPresalePrice(uint256 price) public onlyOwner {
-        initialPresalePrice = price;
-    }
-
-    /**
-     * @dev Sets the price increment per presale stage
-     * @param increment The new presale price increment per stage
-     */
-    function setPresalePriceIncrementPerStage(
-        uint256 increment
-    ) public onlyOwner {
-        presalePriceIncrementPerStage = increment;
-    }
-
-    /**
-     * @dev Sets the launch price of the token
-     * @param price The new launch price
-     */
-    function setLaunchPrice(uint256 price) public onlyOwner {
-        launchPrice = price;
+    function latestUSDCPrice() public view returns (uint256) {
+        return _getLatestPrice(usdcPriceFeedContract);
     }
 
     /**
@@ -265,18 +234,19 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      */
     function setPriceVariationPercentageThreshold(
         uint256 percentage
-    ) public onlyOwner {
-        require(
-            percentage <= 5,
-            "Price variation control: Too high percentage"
-        );
+    ) public onlyOwner withinRange(percentage, 0, 5) {
+        require(priceVariationPercentageThreshold != percentage);
         priceVariationPercentageThreshold = percentage;
     }
 
     /**
      * @dev Starts the presale
      */
-    function startPresale() public onlyOwner presaleNotStarted {
+    function startPresale() public onlyOwner {
+        require(
+            presaleStartTime == 0 || presaleStartTime > block.timestamp,
+            "Presale started"
+        );
         presaleStartTime = block.timestamp;
     }
 
@@ -285,10 +255,11 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      * @return uint256 The end time of the presale
      */
     function presaleEndTime() public view returns (uint256) {
+        uint256 startTime = presaleStartTime;
         return
-            presaleStartTime == 0
+            startTime == 0
                 ? 0
-                : presaleStartTime + presaleStageDuration * presaleStageCount;
+                : startTime + presaleStageDuration * presaleStageCount;
     }
 
     /**
@@ -308,7 +279,8 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
         uint256 currentPrice = initialPresalePrice +
             presalePriceIncrementPerStage *
             stageIndex;
-        return currentPrice < launchPrice ? currentPrice : launchPrice;
+        uint256 listingPrice = launchPrice;
+        return currentPrice < listingPrice ? currentPrice : listingPrice;
     }
 
     /**
@@ -332,44 +304,28 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
     function buyTokensByETH(
         uint256 amountToBuy
     ) public payable presaleActive nonReentrant {
-        require(
-            msg.value > 0,
-            "Token purchase: Need to send ETH to buy tokens"
-        );
-        require(amountToBuy > 0, "Token purchase: Need to buy tokens");
+        require(msg.value > 0, "No ETH sending");
+        require(amountToBuy > 0, "Invalid amount");
         require(
             amountToBuy <= balanceOf(address(this)),
-            "Token purchase: Not enough tokens available"
+            "Not enough tokens available"
         );
 
         uint256 calculatedPrice = calculateETHPrice(amountToBuy);
         uint256 lowerBoundPrice = (calculatedPrice *
             (100 - priceVariationPercentageThreshold)) / 100;
-        require(
-            msg.value >= lowerBoundPrice,
-            "Token purchase: Need to send enough ETH to buy tokens"
-        );
+        require(msg.value >= lowerBoundPrice, "Not enough ETH sending");
+
+        if (msg.value > calculatedPrice) {
+            uint256 excessAmount = msg.value - calculatedPrice;
+            (bool success, ) = msg.sender.call{value: excessAmount}("");
+            require(success, "ETH refund failed");
+        }
 
         _transfer(address(this), msg.sender, amountToBuy);
         totalTokensSoldOnPresale += amountToBuy;
 
         emit Sold(amountToBuy, msg.sender);
-    }
-
-    /**
-     * @dev Sets the USDT contract address
-     * @param newAddress The new USDT contract address
-     */
-    function setUSDTContractAddress(address newAddress) public onlyOwner {
-        usdtContract = newAddress;
-    }
-
-    /**
-     * @dev Sets the USDC contract address
-     * @param newAddress The new USDC contract address
-     */
-    function setUSDCContractAddress(address newAddress) public onlyOwner {
-        usdcContract = newAddress;
     }
 
     /**
@@ -401,7 +357,10 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
     function calculateUSDTPrice(
         uint256 amountToBuy
     ) public view returns (uint256) {
-        return _calculateUSDCoinPrice(usdtContract, amountToBuy);
+        uint256 currentPrice = currentPresalePrice();
+        uint256 usdtPrice = uint256(latestUSDTPrice());
+        uint256 eurPrice = uint256(latestEURPrice());
+        return (amountToBuy * eurPrice * currentPrice) / usdtPrice / 100;
     }
 
     /**
@@ -412,7 +371,10 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
     function calculateUSDCPrice(
         uint256 amountToBuy
     ) public view returns (uint256) {
-        return _calculateUSDCoinPrice(usdcContract, amountToBuy);
+        uint256 currentPrice = currentPresalePrice();
+        uint256 usdcPrice = uint256(latestUSDCPrice());
+        uint256 eurPrice = uint256(latestEURPrice());
+        return (amountToBuy * eurPrice * currentPrice) / usdcPrice / 100;
     }
 
     /**
@@ -424,10 +386,10 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
         address tokenContractAddress,
         uint256 amountToBuy
     ) private presaleActive nonReentrant {
-        require(amountToBuy > 0, "Token purchase: Need to buy tokens");
+        require(amountToBuy > 0, "Invalid amount");
         require(
             amountToBuy <= balanceOf(address(this)),
-            "Token purchase: Not enough tokens available"
+            "Not enough tokens available"
         );
 
         ERC20 tokenContract = ERC20(tokenContractAddress);
@@ -444,7 +406,7 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
         );
         require(
             approvedAmount >= lowerBoundAmount,
-            "Token purchase: Not enough coin balance approved"
+            "Not enough coins approved"
         );
 
         bool coinSent = tokenContract.transferFrom(
@@ -454,7 +416,7 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
                 ? calculatedAmount
                 : approvedAmount
         );
-        require(coinSent, "Token purchase: Coin transfer failed");
+        require(coinSent, "Coin transfer failed");
 
         _transfer(address(this), msg.sender, amountToBuy);
         totalTokensSoldOnPresale += amountToBuy;
@@ -476,120 +438,5 @@ contract DigitalEraBank is ERC20, Ownable, ReentrancyGuard {
      */
     function buyTokensByUSDC(uint256 amountToBuy) public presaleActive {
         _buyTokensByUSDCoin(usdcContract, amountToBuy);
-    }
-
-    /**
-     * @dev Withdraws a specified amount of ETH to a specified address
-     * @param to The address to send the ETH to
-     * @param amount The amount of ETH to withdraw
-     */
-    function withdrawETH(
-        address to,
-        uint256 amount
-    ) public onlyOwner nonReentrant {
-        require(
-            amount > 0,
-            "Withdrawal: Withdrawal amount must be greater than zero"
-        );
-
-        require(
-            amount <= address(this).balance,
-            "Withdrawal: Withdrawal amount exceeds ETH balance"
-        );
-
-        (bool success, ) = to.call{value: amount}("");
-        require(success, "Withdrawal: Withdrawal failed");
-    }
-
-    /**
-     * @dev Withdraws all ETH to a specified address
-     * @param to The address to send the ETH to
-     */
-    function withdrawAllETH(address to) public onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "Withdrawal: No ETH to withdraw");
-
-        (bool success, ) = to.call{value: balance}("");
-        require(success, "Withdrawal: Withdrawal failed");
-    }
-
-    /**
-     * @dev Internal function to withdraw tokens to a specified address
-     * @param tokenAddress The address of the token contract
-     * @param to The address to send the tokens to
-     * @param amount The amount of tokens to withdraw
-     */
-    function _withdrawTokens(
-        address tokenAddress,
-        address to,
-        uint256 amount
-    ) private onlyOwner nonReentrant {
-        require(
-            amount > 0,
-            "Withdrawal: Withdrawal amount must be greater than zero"
-        );
-
-        ERC20 tokenContract = ERC20(tokenAddress);
-
-        uint256 balance = tokenContract.balanceOf(address(this));
-        require(
-            amount <= balance,
-            "Withdrawal: Withdrawal amount exceeds the balance"
-        );
-
-        bool sent = tokenContract.transfer(to, amount);
-        require(sent, "Withdrawal: Withdrawal failed");
-    }
-
-    /**
-     * @dev Internal function to withdraw all tokens to a specified address
-     * @param tokenAddress The address of the token contract
-     * @param to The address to send the tokens to
-     */
-    function _withdrawAllTokens(
-        address tokenAddress,
-        address to
-    ) private onlyOwner nonReentrant {
-        ERC20 tokenContract = ERC20(tokenAddress);
-
-        uint256 balance = tokenContract.balanceOf(address(this));
-        require(balance > 0, "Withdrawal: No balance to withdraw");
-
-        bool sent = tokenContract.transfer(to, balance);
-        require(sent, "Withdrawal: Withdrawal failed");
-    }
-
-    /**
-     * @dev Withdraws a specified amount of USDT to a specified address
-     * @param to The address to send the USDT to
-     * @param amount The amount of USDT to withdraw
-     */
-    function withdrawUSDT(address to, uint256 amount) public onlyOwner {
-        _withdrawTokens(usdtContract, to, amount);
-    }
-
-    /**
-     * @dev Withdraws all USDT to a specified address
-     * @param to The address to send the USDT to
-     */
-    function withdrawAllUSDT(address to) public onlyOwner {
-        _withdrawAllTokens(usdtContract, to);
-    }
-
-    /**
-     * @dev Withdraws a specified amount of USDC to a specified address
-     * @param to The address to send the USDC to
-     * @param amount The amount of USDC to withdraw
-     */
-    function withdrawUSDC(address to, uint256 amount) public onlyOwner {
-        _withdrawTokens(usdcContract, to, amount);
-    }
-
-    /**
-     * @dev Withdraws all USDC to a specified address
-     * @param to The address to send the USDC to
-     */
-    function withdrawAllUSDC(address to) public onlyOwner {
-        _withdrawAllTokens(usdcContract, to);
     }
 }
