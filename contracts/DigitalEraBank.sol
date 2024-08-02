@@ -245,7 +245,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      */
     function setRequiredSignatures(
         uint newRequiredSignatures
-    ) public onlyOwner withinRange(newRequiredSignatures, 1, 10) {
+    ) public onlyOwner {
         require(
             newRequiredSignatures <= signers.length(),
             "Not enough signers"
