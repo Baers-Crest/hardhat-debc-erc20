@@ -17,12 +17,32 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
-import "./MultiSigWallet.sol";
 
-contract DigitalEraBank is ERC20, MultiSigWallet, ReentrancyGuard {
-    // Events
+contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    /** Events */
     event Sold(uint256 amount, address indexed by);
+    event TransactionSubmitted(bytes32 indexed txHash);
+    event TransactionConfirmed(bytes32 indexed txHash, address indexed signer);
+    event TransactionExecuted(bytes32 indexed txHash);
+
+    // List of signers
+    EnumerableSet.AddressSet private signers;
+
+    // Confirmation status of signer transactions
+    mapping(bytes32 => mapping(address => bool)) private confirmations;
+
+    // Number of signers confirmed the signer transactions
+    mapping(bytes32 => uint) private confirmationCounts;
+
+    // Execution status of signer transactions
+    mapping(bytes32 => bool) private executedTransactions;
+
+    // Number of required signers to execute the signer transactions
+    uint public requiredSignatures = 0;
 
     // Address of the ETH price feed contract
     address public constant ethPriceFeedContract =
@@ -75,6 +95,12 @@ contract DigitalEraBank is ERC20, MultiSigWallet, ReentrancyGuard {
     // Price variation percentage threshold (default: 1%)
     uint256 public priceVariationPercentageThreshold = 1;
 
+    // Modifer to check if the msg sender is a signer
+    modifier onlySigner() {
+        require(signers.contains(msg.sender), "Not a signer");
+        _;
+    }
+
     // Modifier to check if the address is not zero
     modifier notZero(address _address) {
         require(_address != address(0), "Address 0");
@@ -120,6 +146,112 @@ contract DigitalEraBank is ERC20, MultiSigWallet, ReentrancyGuard {
      */
     function decimals() public view virtual override returns (uint8) {
         return 8;
+    }
+
+    /**
+     * @dev Submit a signer transaction
+     * @param destination Transaction destination address
+     * @param value Transaction value
+     * @param data Transaction data
+     */
+    function submitTransaction(
+        address destination,
+        uint value,
+        bytes memory data
+    ) public onlySigner notZero(destination) returns (bytes32) {
+        bytes32 txHash = keccak256(abi.encode(destination, value, data));
+        emit TransactionSubmitted(txHash);
+        confirmTransaction(txHash, destination, value, data);
+        return txHash;
+    }
+
+    /**
+     * @dev Confirm a signer transaction
+     * @param txHash Transaction Hash
+     * @param destination Transaction destination address
+     * @param value Transaction value
+     * @param data Transaction data
+     */
+    function confirmTransaction(
+        bytes32 txHash,
+        address destination,
+        uint value,
+        bytes memory data
+    ) public onlySigner notZero(destination) {
+        require(
+            !confirmations[txHash][msg.sender],
+            "Transaction already confirmed"
+        );
+        confirmations[txHash][msg.sender] = true;
+        confirmationCounts[txHash] += 1;
+        emit TransactionConfirmed(txHash, msg.sender);
+
+        if (
+            confirmationCounts[txHash] >= requiredSignatures &&
+            !executedTransactions[txHash]
+        ) {
+            executeTransaction(txHash, destination, value, data);
+        }
+    }
+
+    /**
+     * @dev Execute a signer transaction
+     * @param txHash Transaction Hash
+     * @param destination Transaction destination address
+     * @param value Transaction value
+     * @param data Transaction data
+     */
+    function executeTransaction(
+        bytes32 txHash,
+        address destination,
+        uint value,
+        bytes memory data
+    ) internal {
+        require(
+            confirmationCounts[txHash] >= requiredSignatures,
+            "Not enough confirmations"
+        );
+        require(!executedTransactions[txHash], "Transaction already executed");
+
+        executedTransactions[txHash] = true;
+
+        (bool success, ) = destination.call{value: value}(data);
+        require(success, "Transaction execution failed");
+        emit TransactionExecuted(txHash);
+    }
+
+    /**
+     * @dev Add a signer
+     * @param newSigner A new signer address
+     */
+    function addSigner(address newSigner) public onlyOwner notZero(newSigner) {
+        if (signers.length() == 0 && requiredSignatures == 0) {
+            requiredSignatures = 1;
+        }
+        signers.add(newSigner);
+    }
+
+    /**
+     * @dev Remove a signer from signers list
+     * @param signer A new signer address
+     */
+    function removeSigner(address signer) public onlyOwner {
+        signers.remove(signer);
+    }
+
+    /**
+     * @dev Set the required number of signers to execute signer transactions
+     * @param newRequiredSignatures A new signer address
+     */
+    function setRequiredSignatures(
+        uint newRequiredSignatures
+    ) public onlyOwner withinRange(newRequiredSignatures, 1, 10) {
+        require(
+            newRequiredSignatures <= signers.length(),
+            "Not enough signers"
+        );
+        require(requiredSignatures != newRequiredSignatures);
+        requiredSignatures = newRequiredSignatures;
     }
 
     /**
