@@ -78,7 +78,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     uint256 public constant presaleStageDuration = 1 weeks;
 
     // Number of presale stages (default: 12 stages)
-    uint256 public constant presaleStageCount = 12;
+    uint256 public presaleStageCount = 12;
 
     // Initial price of tokens during the presale in cents (EUR) (default: 0.35 EUR)
     uint256 public constant initialPresalePrice = 35;
@@ -87,7 +87,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     uint256 public constant presalePriceIncrementPerStage = 5;
 
     // Token price at launch in cents (EUR) (default: 1 EUR)
-    uint256 public constant launchPrice = 100; // 1 EUR
+    uint256 public constant launchPrice = 100;
 
     // Total number of tokens sold during the presale
     uint256 public totalTokensSoldOnPresale = 0;
@@ -98,6 +98,12 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     // Modifer to check if the msg sender is a signer
     modifier onlySigner() {
         require(signers.contains(msg.sender), "Not a signer");
+        _;
+    }
+
+    // Modifer to check if the msg sender is the contract itself
+    modifier onlyWallet() {
+        require(msg.sender == address(this), "Not the contract");
         _;
     }
 
@@ -328,12 +334,23 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
+     * @dev Sets the number of presale stages
+     * @param count The new presale stage count
+     */
+    function setPresaleStageCount(
+        uint256 count
+    ) public onlyWallet withinRange(count, 1, 48) {
+        require(presaleStageCount != count);
+        presaleStageCount = count;
+    }
+
+    /**
      * @dev Sets the price variation percentage threshold
      * @param percentage The new price variation percentage threshold
      */
     function setPriceVariationPercentageThreshold(
         uint256 percentage
-    ) public onlyOwner withinRange(percentage, 0, 5) {
+    ) public onlyWallet withinRange(percentage, 0, 5) {
         require(priceVariationPercentageThreshold != percentage);
         priceVariationPercentageThreshold = percentage;
     }
