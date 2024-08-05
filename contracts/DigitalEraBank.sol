@@ -15,6 +15,8 @@
 pragma solidity ^0.8.22;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -22,6 +24,7 @@ import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.so
 
 contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.AddressSet;
+    using SafeERC20 for IERC20;
 
     /** Events */
     event Sold(uint256 amount, address indexed by);
@@ -533,7 +536,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             "Not enough tokens available"
         );
 
-        ERC20 tokenContract = ERC20(usdtContract);
+        IERC20 tokenContract = IERC20(usdtContract);
 
         uint256 calculatedAmount = calculateUSDTPrice(amountToBuy);
         uint256 lowerBoundAmount = (calculatedAmount *
@@ -547,14 +550,13 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             "Not enough coins approved"
         );
 
-        bool coinSent = tokenContract.transferFrom(
+        tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
             approvedAmount >= calculatedAmount
                 ? calculatedAmount
                 : approvedAmount
         );
-        require(coinSent, "Coin transfer failed");
 
         _transfer(address(this), msg.sender, amountToBuy);
         totalTokensSoldOnPresale += amountToBuy;
@@ -596,7 +598,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             "Not enough tokens available"
         );
 
-        ERC20 tokenContract = ERC20(usdcContract);
+        IERC20 tokenContract = IERC20(usdcContract);
 
         uint256 calculatedAmount = calculateUSDCPrice(amountToBuy);
         uint256 lowerBoundAmount = (calculatedAmount *
@@ -610,14 +612,13 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             "Not enough coins approved"
         );
 
-        bool coinSent = tokenContract.transferFrom(
+        tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
             approvedAmount >= calculatedAmount
                 ? calculatedAmount
                 : approvedAmount
         );
-        require(coinSent, "Coin transfer failed");
 
         _transfer(address(this), msg.sender, amountToBuy);
         totalTokensSoldOnPresale += amountToBuy;
