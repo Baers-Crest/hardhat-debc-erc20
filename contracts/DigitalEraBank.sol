@@ -46,30 +46,30 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
 
     // Address of the ETH price feed contract
     address public constant ethPriceFeedContract =
-        0x694AA1769357215DE4FAC081bf1f309aDC325306; // 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
+        0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
 
     // Address of the EUR price feed contract
     address public constant eurPriceFeedContract =
-        0x1a81afB8146aeFfCFc5E50e8479e826E7D55b910; // 0xb49f677943BC038e9857d61E7d053CaA2C1734C1;
+        0xb49f677943BC038e9857d61E7d053CaA2C1734C1;
 
     // Address of the USDT price feed contract
-    address public constant usdtPriceFeedContract =
-        0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // 0x3E7d1eAB13ad0104d2750B8863b489D65364e32D
+    address public usdtPriceFeedContract =
+        0x3E7d1eAB13ad0104d2750B8863b489D65364e32D;
 
     // Address of the USDC price feed contract
-    address public constant usdcPriceFeedContract =
-        0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E; // 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6
+    address public usdcPriceFeedContract =
+        0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
 
     // Heartbeat interval price feed is updated (default: 5 minutes)
     uint256 public heartbeat = 5 minutes;
 
     // Address of the USDT contract
     address public constant usdtContract =
-        0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0; // 0xdAC17F958D2ee523a2206206994597C13D831ec7;
+        0xdAC17F958D2ee523a2206206994597C13D831ec7;
 
     // Address of the USDC contract
     address public constant usdcContract =
-        0xf08A50178dfcDe18524640EA6618a1f965821715; // 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     // Start time of the presale
     uint256 public presaleStartTime = 0;
@@ -295,6 +295,28 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
+     * @dev Sets the USDT/USD price feed contract
+     * @param newContract The new heartbeat interval
+     */
+    function setUSDTPriceFeedContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(usdtPriceFeedContract != newContract);
+        usdtPriceFeedContract = newContract;
+    }
+
+    /**
+     * @dev Sets the USDC/USD price feed contract
+     * @param newContract The new heartbeat interval
+     */
+    function setUSDCPriceFeedContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(usdcPriceFeedContract != newContract);
+        usdcPriceFeedContract = newContract;
+    }
+
+    /**
      * @dev Sets the heartbeat interval
      * @param newInterval The new heartbeat interval
      */
@@ -303,6 +325,17 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     ) public onlyOwner withinRange(newInterval, 1 minutes, 2 hours) {
         require(heartbeat != newInterval);
         heartbeat = newInterval;
+    }
+
+    /**
+     * @dev Sets the price variation percentage threshold
+     * @param percentage The new price variation percentage threshold
+     */
+    function setPriceVariationPercentageThreshold(
+        uint256 percentage
+    ) public onlyOwner withinRange(percentage, 0, 5) {
+        require(priceVariationPercentageThreshold != percentage);
+        priceVariationPercentageThreshold = percentage;
     }
 
     /**
@@ -358,17 +391,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      */
     function latestUSDCPrice() public view returns (uint256) {
         return _getLatestPrice(usdcPriceFeedContract);
-    }
-
-    /**
-     * @dev Sets the price variation percentage threshold
-     * @param percentage The new price variation percentage threshold
-     */
-    function setPriceVariationPercentageThreshold(
-        uint256 percentage
-    ) public onlyOwner withinRange(percentage, 0, 5) {
-        require(priceVariationPercentageThreshold != percentage);
-        priceVariationPercentageThreshold = percentage;
     }
 
     /**
@@ -461,27 +483,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
-     * @dev Internal function to calculate the price in a USDC-compatible token
-     * @param tokenContractAddress The address of the token contract
-     * @param amountToBuy The amount of tokens to buy
-     * @return uint256 The price in the specified token for the given amount of tokens
-     */
-    function _calculateUSDCoinPrice(
-        address tokenContractAddress,
-        uint256 amountToBuy
-    ) private view returns (uint256) {
-        uint256 currentPrice = currentPresalePrice();
-        uint256 eurPrice = uint256(latestEURPrice());
-
-        ERC20 token = ERC20(tokenContractAddress);
-
-        return
-            (amountToBuy * eurPrice * currentPrice) /
-            100 /
-            10 ** (decimals() - token.decimals() + 8);
-    }
-
-    /**
      * @dev Calculates the price in USDT for a given amount of tokens
      * @param amountToBuy The amount of tokens to buy
      * @return uint256 The price in USDT for the given amount of tokens
@@ -492,44 +493,32 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         uint256 currentPrice = currentPresalePrice();
         uint256 usdtPrice = uint256(latestUSDTPrice());
         uint256 eurPrice = uint256(latestEURPrice());
-        return (amountToBuy * eurPrice * currentPrice) / usdtPrice / 100;
-    }
-
-    /**
-     * @dev Calculates the price in USDC for a given amount of tokens
-     * @param amountToBuy The amount of tokens to buy
-     * @return uint256 The price in USDC for the given amount of tokens
-     */
-    function calculateUSDCPrice(
-        uint256 amountToBuy
-    ) public view returns (uint256) {
-        uint256 currentPrice = currentPresalePrice();
-        uint256 usdcPrice = uint256(latestUSDCPrice());
-        uint256 eurPrice = uint256(latestEURPrice());
-        return (amountToBuy * eurPrice * currentPrice) / usdcPrice / 100;
+        ERC20 tokenContract = ERC20(usdtContract);
+        return
+            (amountToBuy *
+                eurPrice *
+                currentPrice *
+                10 ** tokenContract.decimals()) /
+            usdtPrice /
+            10 ** 10;
     }
 
     /**
      * @dev Internal function to buy tokens using a USDC-compatible token
-     * @param tokenContractAddress The address of the token contract
      * @param amountToBuy The amount of tokens to buy
      */
-    function _buyTokensByUSDCoin(
-        address tokenContractAddress,
+    function buyTokensByUSDT(
         uint256 amountToBuy
-    ) private presaleActive nonReentrant {
+    ) public presaleActive nonReentrant {
         require(amountToBuy > 0, "Invalid amount");
         require(
             amountToBuy <= balanceOf(address(this)),
             "Not enough tokens available"
         );
 
-        ERC20 tokenContract = ERC20(tokenContractAddress);
+        ERC20 tokenContract = ERC20(usdtContract);
 
-        uint256 calculatedAmount = _calculateUSDCoinPrice(
-            tokenContractAddress,
-            amountToBuy
-        );
+        uint256 calculatedAmount = calculateUSDTPrice(amountToBuy);
         uint256 lowerBoundAmount = (calculatedAmount *
             (100 - priceVariationPercentageThreshold)) / 100;
         uint256 approvedAmount = tokenContract.allowance(
@@ -557,18 +546,65 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
-     * @dev Buys tokens using USDT during the presale
+     * @dev Calculates the price in USDC for a given amount of tokens
      * @param amountToBuy The amount of tokens to buy
+     * @return uint256 The price in USDC for the given amount of tokens
      */
-    function buyTokensByUSDT(uint256 amountToBuy) public presaleActive {
-        _buyTokensByUSDCoin(usdtContract, amountToBuy);
+    function calculateUSDCPrice(
+        uint256 amountToBuy
+    ) public view returns (uint256) {
+        uint256 currentPrice = currentPresalePrice();
+        uint256 usdcPrice = uint256(latestUSDCPrice());
+        uint256 eurPrice = uint256(latestEURPrice());
+        ERC20 tokenContract = ERC20(usdcContract);
+        return
+            (amountToBuy *
+                eurPrice *
+                currentPrice *
+                10 ** tokenContract.decimals()) /
+            usdcPrice /
+            10 ** 10;
     }
 
     /**
-     * @dev Buys tokens using USDC during the presale
+     * @dev Internal function to buy tokens using a USDC-compatible token
      * @param amountToBuy The amount of tokens to buy
      */
-    function buyTokensByUSDC(uint256 amountToBuy) public presaleActive {
-        _buyTokensByUSDCoin(usdcContract, amountToBuy);
+    function buyTokensByUSDC(
+        uint256 amountToBuy
+    ) public presaleActive nonReentrant {
+        require(amountToBuy > 0, "Invalid amount");
+        require(
+            amountToBuy <= balanceOf(address(this)),
+            "Not enough tokens available"
+        );
+
+        ERC20 tokenContract = ERC20(usdcContract);
+
+        uint256 calculatedAmount = calculateUSDCPrice(amountToBuy);
+        uint256 lowerBoundAmount = (calculatedAmount *
+            (100 - priceVariationPercentageThreshold)) / 100;
+        uint256 approvedAmount = tokenContract.allowance(
+            msg.sender,
+            address(this)
+        );
+        require(
+            approvedAmount >= lowerBoundAmount,
+            "Not enough coins approved"
+        );
+
+        bool coinSent = tokenContract.transferFrom(
+            msg.sender,
+            address(this),
+            approvedAmount >= calculatedAmount
+                ? calculatedAmount
+                : approvedAmount
+        );
+        require(coinSent, "Coin transfer failed");
+
+        _transfer(address(this), msg.sender, amountToBuy);
+        totalTokensSoldOnPresale += amountToBuy;
+
+        emit Sold(amountToBuy, msg.sender);
     }
 }
