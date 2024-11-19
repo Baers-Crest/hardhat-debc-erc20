@@ -331,7 +331,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      */
     function setHeartbeat(
         uint256 newInterval
-    ) public onlyOwner withinRange(newInterval, 1 minutes, 2 hours) {
+    ) public onlyOwner withinRange(newInterval, 1 minutes, 2 weeks) {
         require(heartbeat != newInterval);
         heartbeat = newInterval;
     }
@@ -370,8 +370,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             priceFeedContract
         );
 
-        (, int256 price, , uint256 updatedAt, ) = aggregator.latestRoundData();
-        require(block.timestamp - updatedAt <= heartbeat, "Stale data");
+        (, int256 price, , , ) = aggregator.latestRoundData();
 
         uint8 tokenDecimals = aggregator.decimals();
         if (tokenDecimals <= 8) {
