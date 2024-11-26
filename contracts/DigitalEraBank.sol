@@ -63,8 +63,8 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     address public usdcPriceFeedContract =
         0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
 
-    // Heartbeat interval price feed is updated (default: 5 minutes)
-    uint256 public heartbeat = 5 minutes;
+    // Heartbeat interval price feed is updated (default: 25 hours)
+    uint256 public heartbeat = 25 hours;
 
     // Address of the USDT contract
     address public constant usdtContract =
@@ -331,7 +331,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      */
     function setHeartbeat(
         uint256 newInterval
-    ) public onlyOwner withinRange(newInterval, 1 minutes, 2 weeks) {
+    ) public onlyOwner withinRange(newInterval, 1 minutes, 1 weeks) {
         require(heartbeat != newInterval);
         heartbeat = newInterval;
     }
@@ -370,7 +370,8 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
             priceFeedContract
         );
 
-        (, int256 price, , , ) = aggregator.latestRoundData();
+        (, int256 price, , uint256 updatedAt, ) = aggregator.latestRoundData();
+        require(block.timestamp - updatedAt <= heartbeat, "Stale data");
 
         uint8 tokenDecimals = aggregator.decimals();
         if (tokenDecimals <= 8) {
