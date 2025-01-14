@@ -77,6 +77,12 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     // Start time of the presale
     uint256 public presaleStartTime = 0;
 
+    // Paused time of the presale
+    uint256 public presalePausedTime = 0;
+
+    // Total paused time of presale
+    uint256 private totalPresalePausedTime = 0;
+
     // Duration of each presale stage in seconds (default: 1 week)
     uint256 public constant presaleStageDuration = 1 weeks;
 
@@ -135,7 +141,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         );
         require(
             block.timestamp <
-                startTime + presaleStageDuration * presaleStageCount,
+                startTime +
+                    totalPresalePausedTime +
+                    presaleStageDuration *
+                    presaleStageCount,
             "Presale ended"
         );
         _;
@@ -296,7 +305,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         uint256 startTime = presaleStartTime;
         bool isPresaledEnded = startTime != 0 &&
             block.timestamp >=
-            startTime + presaleStageDuration * presaleStageCount;
+            startTime +
+                totalPresalePausedTime +
+                presaleStageDuration *
+                presaleStageCount;
         require(
             from == address(0) || from == address(this) || isPresaledEnded,
             "Transfers not allowed"
@@ -425,6 +437,29 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
+     * @dev Pause the presale
+     */
+    function pausePresale() public onlyOwner presaleActive {
+        require(presalePausedTime == 0, "Presale paused");
+        presalePausedTime = block.timestamp;
+    }
+
+    /**
+     * @dev Resume the presale
+     */
+    function resumePresale() public onlyOwner presaleActive {
+        uint256 pausedTime = presalePausedTime;
+
+        require(pausedTime > 0, "Presale not paused");
+
+        presalePausedTime = 0;
+
+        if (block.timestamp > pausedTime) {
+            totalPresalePausedTime += block.timestamp - pausedTime;
+        }
+    }
+
+    /**
      * @dev Returns the end time of the presale
      * @return uint256 The end time of the presale
      */
@@ -433,7 +468,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         return
             startTime == 0
                 ? 0
-                : startTime + presaleStageDuration * presaleStageCount;
+                : startTime +
+                    totalPresalePausedTime +
+                    presaleStageDuration *
+                    presaleStageCount;
     }
 
     /**
@@ -441,7 +479,9 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      * @return uint256 The current presale stage
      */
     function currentPresaleStage() public view presaleActive returns (uint256) {
-        return (block.timestamp - presaleStartTime) / presaleStageDuration;
+        return
+            (block.timestamp - presaleStartTime - totalPresalePausedTime) /
+            presaleStageDuration;
     }
 
     /**
