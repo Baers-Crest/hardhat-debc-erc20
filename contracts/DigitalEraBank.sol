@@ -63,8 +63,8 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     address public usdcPriceFeedContract =
         0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
 
-    // Heartbeat interval price feed is updated (default: 25 hours)
-    uint256 public heartbeat = 25 hours;
+    // Heartbeat interval price feed is updated (default: 2 hours)
+    uint256 public heartbeat = 2 hours;
 
     // Address of the USDT contract
     address public constant usdtContract =
