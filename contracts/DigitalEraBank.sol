@@ -101,9 +101,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     // Total number of tokens sold during the presale
     uint256 public totalTokensSoldOnPresale = 0;
 
-    // Price variation percentage threshold (default: 1%)
-    uint256 public priceVariationPercentageThreshold = 1;
-
     // Modifer to check if the msg sender is a signer
     modifier onlySigner() {
         require(signers.contains(msg.sender), "Not a signer");
@@ -360,17 +357,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
-     * @dev Sets the price variation percentage threshold
-     * @param percentage The new price variation percentage threshold
-     */
-    function setPriceVariationPercentageThreshold(
-        uint256 percentage
-    ) public onlyWallet withinRange(percentage, 0, 5) {
-        require(priceVariationPercentageThreshold != percentage);
-        priceVariationPercentageThreshold = percentage;
-    }
-
-    /**
      * @dev Returns the latest price from a price feed contract
      * @param priceFeedContract The address of the price feed contract
      * @return int256 The latest price
@@ -526,9 +512,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         );
 
         uint256 calculatedPrice = calculateETHPrice(amountToBuy);
-        uint256 lowerBoundPrice = (calculatedPrice *
-            (100 - priceVariationPercentageThreshold)) / 100;
-        require(msg.value >= lowerBoundPrice, "Not enough ETH sending");
+        require(msg.value >= calculatedPrice, "Not enough ETH sending");
 
         if (msg.value > calculatedPrice) {
             uint256 excessAmount = msg.value - calculatedPrice;
@@ -579,23 +563,19 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         IERC20 tokenContract = IERC20(usdtContract);
 
         uint256 calculatedAmount = calculateUSDTPrice(amountToBuy);
-        uint256 lowerBoundAmount = (calculatedAmount *
-            (100 - priceVariationPercentageThreshold)) / 100;
         uint256 approvedAmount = tokenContract.allowance(
             msg.sender,
             address(this)
         );
         require(
-            approvedAmount >= lowerBoundAmount,
+            approvedAmount >= calculatedAmount,
             "Not enough coins approved"
         );
 
         tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
-            approvedAmount >= calculatedAmount
-                ? calculatedAmount
-                : approvedAmount
+            calculatedAmount
         );
 
         _transfer(address(this), msg.sender, amountToBuy);
@@ -641,23 +621,19 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         IERC20 tokenContract = IERC20(usdcContract);
 
         uint256 calculatedAmount = calculateUSDCPrice(amountToBuy);
-        uint256 lowerBoundAmount = (calculatedAmount *
-            (100 - priceVariationPercentageThreshold)) / 100;
         uint256 approvedAmount = tokenContract.allowance(
             msg.sender,
             address(this)
         );
         require(
-            approvedAmount >= lowerBoundAmount,
+            approvedAmount >= calculatedAmount,
             "Not enough coins approved"
         );
 
         tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
-            approvedAmount >= calculatedAmount
-                ? calculatedAmount
-                : approvedAmount
+            calculatedAmount
         );
 
         _transfer(address(this), msg.sender, amountToBuy);
