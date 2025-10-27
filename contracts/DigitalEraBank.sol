@@ -63,8 +63,8 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     address public usdcPriceFeedContract =
         0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6;
 
-    // Heartbeat interval price feed is updated (default: 5 minutes)
-    uint256 public heartbeat = 5 minutes;
+    // Heartbeat interval price feed is updated (default: 2 hours)
+    uint256 public heartbeat = 2 hours;
 
     // Address of the USDT contract
     address public constant usdtContract =
@@ -76,6 +76,12 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
 
     // Start time of the presale
     uint256 public presaleStartTime = 0;
+
+    // Paused time of the presale
+    uint256 public presalePausedTime = 0;
+
+    // Total paused time of presale
+    uint256 private totalPresalePausedTime = 0;
 
     // Duration of each presale stage in seconds (default: 1 week)
     uint256 public constant presaleStageDuration = 1 weeks;
@@ -94,9 +100,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
 
     // Total number of tokens sold during the presale
     uint256 public totalTokensSoldOnPresale = 0;
-
-    // Price variation percentage threshold (default: 1%)
-    uint256 public priceVariationPercentageThreshold = 1;
 
     // Modifer to check if the msg sender is a signer
     modifier onlySigner() {
@@ -135,7 +138,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         );
         require(
             block.timestamp <
-                startTime + presaleStageDuration * presaleStageCount,
+                startTime +
+                    totalPresalePausedTime +
+                    presaleStageDuration *
+                    presaleStageCount,
             "Presale ended"
         );
         _;
@@ -296,7 +302,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         uint256 startTime = presaleStartTime;
         bool isPresaledEnded = startTime != 0 &&
             block.timestamp >=
-            startTime + presaleStageDuration * presaleStageCount;
+            startTime +
+                totalPresalePausedTime +
+                presaleStageDuration *
+                presaleStageCount;
         require(
             from == address(0) || from == address(this) || isPresaledEnded,
             "Transfers not allowed"
@@ -331,7 +340,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      */
     function setHeartbeat(
         uint256 newInterval
-    ) public onlyOwner withinRange(newInterval, 1 minutes, 2 hours) {
+    ) public onlyOwner withinRange(newInterval, 1 minutes, 1 weeks) {
         require(heartbeat != newInterval);
         heartbeat = newInterval;
     }
@@ -345,17 +354,6 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     ) public onlyWallet withinRange(count, 1, 48) {
         require(presaleStageCount != count);
         presaleStageCount = count;
-    }
-
-    /**
-     * @dev Sets the price variation percentage threshold
-     * @param percentage The new price variation percentage threshold
-     */
-    function setPriceVariationPercentageThreshold(
-        uint256 percentage
-    ) public onlyWallet withinRange(percentage, 0, 5) {
-        require(priceVariationPercentageThreshold != percentage);
-        priceVariationPercentageThreshold = percentage;
     }
 
     /**
@@ -425,6 +423,29 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     /**
+     * @dev Pause the presale
+     */
+    function pausePresale() public onlyOwner presaleActive {
+        require(presalePausedTime == 0, "Presale paused");
+        presalePausedTime = block.timestamp;
+    }
+
+    /**
+     * @dev Resume the presale
+     */
+    function resumePresale() public onlyOwner presaleActive {
+        uint256 pausedTime = presalePausedTime;
+
+        require(pausedTime > 0, "Presale not paused");
+
+        presalePausedTime = 0;
+
+        if (block.timestamp > pausedTime) {
+            totalPresalePausedTime += block.timestamp - pausedTime;
+        }
+    }
+
+    /**
      * @dev Returns the end time of the presale
      * @return uint256 The end time of the presale
      */
@@ -433,7 +454,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         return
             startTime == 0
                 ? 0
-                : startTime + presaleStageDuration * presaleStageCount;
+                : startTime +
+                    totalPresalePausedTime +
+                    presaleStageDuration *
+                    presaleStageCount;
     }
 
     /**
@@ -441,7 +465,9 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
      * @return uint256 The current presale stage
      */
     function currentPresaleStage() public view presaleActive returns (uint256) {
-        return (block.timestamp - presaleStartTime) / presaleStageDuration;
+        return
+            (block.timestamp - presaleStartTime - totalPresalePausedTime) /
+            presaleStageDuration;
     }
 
     /**
@@ -486,9 +512,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         );
 
         uint256 calculatedPrice = calculateETHPrice(amountToBuy);
-        uint256 lowerBoundPrice = (calculatedPrice *
-            (100 - priceVariationPercentageThreshold)) / 100;
-        require(msg.value >= lowerBoundPrice, "Not enough ETH sending");
+        require(msg.value >= calculatedPrice, "Not enough ETH sending");
 
         if (msg.value > calculatedPrice) {
             uint256 excessAmount = msg.value - calculatedPrice;
@@ -539,23 +563,19 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         IERC20 tokenContract = IERC20(usdtContract);
 
         uint256 calculatedAmount = calculateUSDTPrice(amountToBuy);
-        uint256 lowerBoundAmount = (calculatedAmount *
-            (100 - priceVariationPercentageThreshold)) / 100;
         uint256 approvedAmount = tokenContract.allowance(
             msg.sender,
             address(this)
         );
         require(
-            approvedAmount >= lowerBoundAmount,
+            approvedAmount >= calculatedAmount,
             "Not enough coins approved"
         );
 
         tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
-            approvedAmount >= calculatedAmount
-                ? calculatedAmount
-                : approvedAmount
+            calculatedAmount
         );
 
         _transfer(address(this), msg.sender, amountToBuy);
@@ -601,23 +621,19 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
         IERC20 tokenContract = IERC20(usdcContract);
 
         uint256 calculatedAmount = calculateUSDCPrice(amountToBuy);
-        uint256 lowerBoundAmount = (calculatedAmount *
-            (100 - priceVariationPercentageThreshold)) / 100;
         uint256 approvedAmount = tokenContract.allowance(
             msg.sender,
             address(this)
         );
         require(
-            approvedAmount >= lowerBoundAmount,
+            approvedAmount >= calculatedAmount,
             "Not enough coins approved"
         );
 
         tokenContract.safeTransferFrom(
             msg.sender,
             address(this),
-            approvedAmount >= calculatedAmount
-                ? calculatedAmount
-                : approvedAmount
+            calculatedAmount
         );
 
         _transfer(address(this), msg.sender, amountToBuy);
