@@ -5,7 +5,7 @@ import { ethers, network } from "hardhat";
 import { DigitalEraBank, USDC, USDT } from "../typechain-types";
 
 const DEBCTokenAddress = {
-  sepolia: "0xd44141d0e0c837D73cC505126aF631F8cF97aA20",
+  sepolia: "0xd43BFB50712CDaa567f9Ea1763E7276EeF5079AB",
 };
 
 const USDCTokenAddress = {
@@ -67,6 +67,10 @@ describe.only("DEBC", function () {
       debcAddress = DEBCTokenAddress.sepolia;
       debc = await ethers.getContractAt("DigitalEraBank", debcAddress);
       usdc = await ethers.getContractAt("USDC", USDCTokenAddress.sepolia);
+
+      const USDC = await ethers.getContractFactory("USDC");
+      usdc = await USDC.deploy(1e15);
+      await usdc.waitForDeployment();
     } else {
       const DEBC = await ethers.getContractFactory("DigitalEraBank");
       debc = await DEBC.deploy();
@@ -155,6 +159,114 @@ describe.only("DEBC", function () {
 
     it("should set the right initial supply", async function () {
       expect(await debc.totalSupply()).to.equal(INITIAL_SUPPLY);
+    });
+  });
+
+  describe("Contract configuration", function () {
+    describe("setETHPriceFeedContract()", function () {
+      it("should fail to set ETH price feed contract as a non-owner", async function () {
+        const newContract = await otherAccount.getAddress();
+        await expect(
+          debc.connect(otherAccount).setETHPriceFeedContract(newContract)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
+      it("should fail to set ETH price feed contract to zero address", async function () {
+        await expect(
+          debc.setETHPriceFeedContract(ethers.ZeroAddress)
+        ).to.be.revertedWith("Address 0");
+      });
+
+      it("should fail to set ETH price feed contract to the same address", async function () {
+        const currentContract = await debc.ethPriceFeedContract();
+        await expect(debc.setETHPriceFeedContract(currentContract)).to.be
+          .reverted;
+      });
+
+      it("should set the right ETH price feed contract", async function () {
+        const newContract = await otherAccount.getAddress();
+        await debc.setETHPriceFeedContract(newContract);
+        expect(await debc.ethPriceFeedContract()).to.equal(newContract);
+      });
+    });
+
+    describe("setEURPriceFeedContract()", function () {
+      it("should fail to set EUR price feed contract as a non-owner", async function () {
+        const newContract = await otherAccount.getAddress();
+        await expect(
+          debc.connect(otherAccount).setEURPriceFeedContract(newContract)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
+      it("should fail to set EUR price feed contract to zero address", async function () {
+        await expect(
+          debc.setEURPriceFeedContract(ethers.ZeroAddress)
+        ).to.be.revertedWith("Address 0");
+      });
+
+      it("should fail to set EUR price feed contract to the same address", async function () {
+        const currentContract = await debc.eurPriceFeedContract();
+        await expect(debc.setEURPriceFeedContract(currentContract)).to.be
+          .reverted;
+      });
+
+      it("should set the right EUR price feed contract", async function () {
+        const newContract = await otherAccount.getAddress();
+        await debc.setEURPriceFeedContract(newContract);
+        expect(await debc.eurPriceFeedContract()).to.equal(newContract);
+      });
+    });
+
+    describe("setUSDTContract()", function () {
+      it("should fail to set USDT contract as a non-owner", async function () {
+        const newContract = await otherAccount.getAddress();
+        await expect(
+          debc.connect(otherAccount).setUSDTContract(newContract)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
+      it("should fail to set USDT contract to zero address", async function () {
+        await expect(
+          debc.setUSDTContract(ethers.ZeroAddress)
+        ).to.be.revertedWith("Address 0");
+      });
+
+      it("should fail to set USDT contract to the same address", async function () {
+        const currentContract = await debc.usdtContract();
+        await expect(debc.setUSDTContract(currentContract)).to.be.reverted;
+      });
+
+      it("should set the right USDT contract", async function () {
+        const newContract = await otherAccount.getAddress();
+        await debc.setUSDTContract(newContract);
+        expect(await debc.usdtContract()).to.equal(newContract);
+      });
+    });
+
+    describe("setUSDCContract()", function () {
+      it("should fail to set USDC contract as a non-owner", async function () {
+        const newContract = await otherAccount.getAddress();
+        await expect(
+          debc.connect(otherAccount).setUSDCContract(newContract)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+      });
+
+      it("should fail to set USDC contract to zero address", async function () {
+        await expect(
+          debc.setUSDCContract(ethers.ZeroAddress)
+        ).to.be.revertedWith("Address 0");
+      });
+
+      it("should fail to set USDC contract to the same address", async function () {
+        const currentContract = await debc.usdcContract();
+        await expect(debc.setUSDCContract(currentContract)).to.be.reverted;
+      });
+
+      it("should set the right USDC contract", async function () {
+        const newContract = await otherAccount.getAddress();
+        await debc.setUSDCContract(newContract);
+        expect(await debc.usdcContract()).to.equal(newContract);
+      });
     });
   });
 
@@ -257,11 +369,43 @@ describe.only("DEBC", function () {
         );
       });
 
-      it("shold mint the right amount of tokens to the right account", async function () {
+      it("shold mint the right amount of tokens to the right account before presale", async function () {
         const amount2Mint = 10n;
         await debc.mint(amount2Mint);
         expect(await debc.balanceOf(debcAddress)).to.equal(
           INITIAL_SUPPLY + amount2Mint
+        );
+      });
+
+      it("should mint the right amount of tokens during presale", async function () {
+        await debc.startPresale();
+        await time.increase(60 * 60);
+
+        const prevAmount = await debc.balanceOf(debcAddress);
+        const amount2Mint = 10n;
+
+        await debc.mint(amount2Mint);
+
+        expect(await debc.balanceOf(debcAddress)).to.equal(
+          prevAmount + amount2Mint
+        );
+      });
+
+      it("should not mint the right amount of tokens after presale ends", async function () {
+        await debc.startPresale();
+
+        const presaleStageDuration = await debc.presaleStageDuration();
+        const presaleStageCount = await debc.presaleStageCount();
+
+        await time.increase(presaleStageDuration * presaleStageCount + 1n);
+
+        const prevAmount = await debc.balanceOf(debcAddress);
+        const amount2Mint = 10n;
+
+        await debc.mint(amount2Mint);
+
+        expect(await debc.balanceOf(debcAddress)).to.equal(
+          prevAmount + amount2Mint
         );
       });
     });
@@ -273,7 +417,7 @@ describe.only("DEBC", function () {
         );
       });
 
-      it("should burn the right amount of tokens from the token contract itself", async function () {
+      it("should burn the right amount of tokens from the token contract itself before presale start", async function () {
         const thisAddress = await debc.getAddress();
         const prevAmount = await debc.balanceOf(thisAddress);
         const amount2Burn = 10n;
@@ -283,27 +427,17 @@ describe.only("DEBC", function () {
         );
       });
 
-      it("should fail to burn tokens from the token contract until the presale starts", async function () {
-        await expect(debc.burn(10)).to.be.revertedWith(
-          "Token transfer: Transfers are currently not allowed"
-        );
-      });
-
-      it("should fail to burn tokens from a non-contract account until the presale ends", async function () {
-        await debc.startPresale();
-        await expect(debc.burn(10)).to.be.revertedWith(
-          "Token transfer: Transfers are currently not allowed"
-        );
-      });
-
-      it("should burn the right amount of tokens from the right account after the presale ends", async function () {
-        await debc.setPresaleStageCount(1);
+      it("should burn the right amount of tokens during presale", async function () {
         await debc.mint(100n);
         await debc.startPresale();
-        const prevAmount = await debc.balanceOf(otherAccount);
+        await time.increase(60 * 60);
+
+        const prevAmount = await debc.balanceOf(debcAddress);
+
         const amount2Burn = 10n;
         await debc.burn(amount2Burn);
-        expect(await debc.balanceOf(otherAccount)).to.equal(
+
+        expect(await debc.balanceOf(debcAddress)).to.equal(
           prevAmount - amount2Burn
         );
       });
