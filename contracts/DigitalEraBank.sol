@@ -48,11 +48,11 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     uint public requiredSignatures = 0;
 
     // Address of the ETH price feed contract
-    address public constant ethPriceFeedContract =
+    address public ethPriceFeedContract =
         0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
 
     // Address of the EUR price feed contract
-    address public constant eurPriceFeedContract =
+    address public eurPriceFeedContract =
         0xb49f677943BC038e9857d61E7d053CaA2C1734C1;
 
     // Address of the USDT price feed contract
@@ -67,12 +67,10 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     uint256 public heartbeat = 2 hours;
 
     // Address of the USDT contract
-    address public constant usdtContract =
-        0xdAC17F958D2ee523a2206206994597C13D831ec7;
+    address public usdtContract = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
 
     // Address of the USDC contract
-    address public constant usdcContract =
-        0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public usdcContract = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     // Start time of the presale
     uint256 public presaleStartTime = 0;
@@ -120,11 +118,7 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     }
 
     // Modifier to check if the address is not zero
-    modifier withinRange(
-        uint256 value,
-        uint256 min,
-        uint256 max
-    ) {
+    modifier withinRange(uint256 value, uint256 min, uint256 max) {
         require(value >= min && value <= max, "Out of range");
         _;
     }
@@ -332,6 +326,50 @@ contract DigitalEraBank is ERC20, Ownable2Step, ReentrancyGuard {
     ) public onlyOwner notZero(newContract) {
         require(usdcPriceFeedContract != newContract);
         usdcPriceFeedContract = newContract;
+    }
+
+    /**
+     * @dev Sets the ETH/USD price feed contract
+     * @param newContract The new eth price feed contract
+     */
+    function setETHPriceFeedContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(ethPriceFeedContract != newContract);
+        ethPriceFeedContract = newContract;
+    }
+
+    /**
+     * @dev Sets the EUR/USD price feed contract
+     * @param newContract The new eur price feed contract
+     */
+    function setEURPriceFeedContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(eurPriceFeedContract != newContract);
+        eurPriceFeedContract = newContract;
+    }
+
+    /**
+     * @dev Sets the USDT contract
+     * @param newContract The new usdt contract
+     */
+    function setUSDTContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(usdtContract != newContract);
+        usdtContract = newContract;
+    }
+
+    /**
+     * @dev Sets the USDC contract
+     * @param newContract The new usdc contract
+     */
+    function setUSDCContract(
+        address newContract
+    ) public onlyOwner notZero(newContract) {
+        require(usdcContract != newContract);
+        usdcContract = newContract;
     }
 
     /**
